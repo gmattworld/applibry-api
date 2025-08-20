@@ -1,0 +1,137 @@
+name: Notisense API (Poetry)
+
+on:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PYTHON_VERSION: "3.13"
+  APP_DIR: "."
+  applibry_api_PKG_ROOT: "applibry_api/applibry_api"
+  PKG_ROOT: "applibry_api"
+  ZIP_NAME: "applibry.zip"
+  S3_BUCKET: "applibry"
+  LAMBDA_NAME: "applibry-api"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: |
+            poetry.lock
+            pyproject.toml
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: "2.1.3"
+
+      - name: Configure Poetry
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry --version
+          poetry env info
+
+      - name: Ensure 'poetry export' is available
+        run: |
+          set -e
+          if ! poetry help export >/dev/null 2>&1; then
+            poetry self add poetry-plugin-export
+          fi
+          poetry help export >/dev/null
+
+      - name: Ensure lock is up-to-date (no update)
+        run: |
+          poetry lock
+
+      - name: Install dependencies (Poetry)
+        run: |
+          poetry install --no-interaction --no-ansi --no-root
+
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: |
+          poetry run python -c "import sys; print('Python OK:', sys.version)"
+          # poetry run pytest -q
+
+      - name: Build Lambda package (ensure notisense_api is at ZIP root)
+        run: |
+          set -euo pipefail
+          rm -rf package "${{ env.ZIP_NAME }}"
+
+          # Export runtime deps only (dev/test groups excluded)
+          poetry export -f requirements.txt --output requirements.txt --without-hashes
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -t package
+
+          # Sanity check: package root must exist
+          if [ ! -d "${{ env.applibry_api_PKG_ROOT }}" ]; then
+            echo "ERROR: Expected package folder '${{ env.applibry_api_PKG_ROOT }}' not found at repo root."
+            exit 1
+          fi
+
+          # Copy your application package so it sits at the ZIP root as notisense_api/
+          mkdir -p package/${{ env.PKG_ROOT }}
+          rsync -a "${{ env.applibry_api_PKG_ROOT }}/" "package/${{ env.PKG_ROOT }}/" \
+            --exclude "__pycache__/" --exclude "*.pyc"
+
+          # Optionally include your Lambda entrypoint at the root (e.g., main.py for handler=main.handler)
+          if [ -f "main.py" ]; then cp main.py package/; fi
+
+          # Copy any other top-level modules you import directly (optional)
+          # cp -r applibry_api_shared/ package/applibry_api_shared/  # example
+
+          # Zip the contents so that notisense_api/ is at the root of the archive
+          (cd package && zip -r9 "../${{ env.ZIP_NAME }}" .)
+          ls -lh "${{ env.ZIP_NAME }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4.4.0
+        with:
+          name: notisense
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 3
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ build ]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: notisense
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_GITHUB_OIDC_ROLE }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Upload to S3
+        run: aws s3 cp "${{ env.ZIP_NAME }}" "s3://${{ env.S3_BUCKET }}/${{ env.ZIP_NAME }}"
+
+      - name: Update Lambda function code
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ env.LAMBDA_NAME }}" \
+            --s3-bucket "${{ env.S3_BUCKET }}" \
+            --s3-key "${{ env.ZIP_NAME }}"
