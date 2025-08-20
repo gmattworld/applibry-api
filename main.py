@@ -4,6 +4,7 @@ import sys
 from decouple import config
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends
+from mangum import Mangum
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -66,4 +67,4 @@ app.include_router(users.controller.router, prefix="/api/v1")
 async def root():
     return {"message": "Welcome to Applibry API Documentation!"}
 
-# handler = Mangum(app = app)
+handler = Mangum(app = app)
