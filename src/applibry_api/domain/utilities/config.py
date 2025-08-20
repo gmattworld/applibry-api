@@ -39,18 +39,6 @@ class Settings(BaseSettings):
     NATTYPAD_CLIENT_ID: str = config("NATTYPAD_CLIENT_ID", default="")
     NATTYPAD_CLIENT_SECRET: str = config("NATTYPAD_CLIENT_SECRET", default="")
 
-    # Email
-    MAIL_USERNAME: str = config("MAIL_USERNAME", default="")
-    MAIL_PASSWORD: str = config("MAIL_PASSWORD", default="")
-    MAIL_FROM: str = config("MAIL_FROM", default="")
-    MAIL_FROM_NAME: str = config("MAIL_FROM_NAME", default="")
-    MAIL_PORT: int = config("MAIL_PORT", default=587, cast=int)
-    MAIL_SERVER: str = config("MAIL_SERVER", default="")
-    MAIL_STARTTLS: bool = config("MAIL_STARTTLS", default=True, cast=bool)
-    MAIL_SSL_TLS: bool = config("MAIL_SSL_TLS", default=False, cast=bool)
-    USE_CREDENTIALS: bool = config("USE_CREDENTIALS", default=True, cast=bool)
-    VALIDATE_CERTS: bool = config("VALIDATE_CERTS", default=True, cast=bool)
-
     # Frontend
     FRONTEND_URL: str = config("FRONTEND_URL", default="http://localhost:3000")
 
@@ -66,10 +54,6 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: list = config(
         "ALLOWED_EXTENSIONS", default="jpg,jpeg,png,pdf", cast=lambda v: [s.strip() for s in v.split(',')])
 
-    # Logging Configuration
-    LOG_LEVEL: str = "INFO"
-    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    LOG_DIR: str = "logs"
 
     # Rate Limiting Configuration
     RATE_LIMIT_ENABLED: bool = config(
@@ -88,6 +72,3 @@ class Settings(BaseSettings):
 
 # Create settings instance
 settings = Settings()
-
-# Ensure log directory exists
-os.makedirs(settings.LOG_DIR, exist_ok=True)
