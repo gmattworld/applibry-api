@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [tool.poetry]
-packages = [{include = "applibry_api", from = "applibry_api"}]
+packages = [{include = "applibry_api", from = "src"}]
 
 
 [build-system]
